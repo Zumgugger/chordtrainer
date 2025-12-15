@@ -1,0 +1,17 @@
+# Local chat history
+.chat/
+.copilot/
+.vscode/copilot-chat/
+
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

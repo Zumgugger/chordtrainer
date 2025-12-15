@@ -52,6 +52,21 @@
     .competition-info{text-align:center;margin:8px 0;font-size:14px}
     .highscore{background:rgba(16,185,129,0.1);padding:8px;border-radius:6px;margin-top:8px;font-size:13px}
     #circleOfFifthsSvg{max-width:100%;height:auto}
+    .piano-container{background:rgba(255,255,255,0.02);border-radius:12px;padding:16px;margin-top:16px;overflow-x:auto}
+    .piano{display:flex;gap:0;position:relative;justify-content:center;margin:0 auto;width:fit-content}
+    .piano-key{position:relative;cursor:pointer;user-select:none;border:1px solid rgba(0,0,0,0.3);transition:all 0.1s}
+    .piano-key.white{width:40px;height:160px;background:linear-gradient(to bottom,#ffffff 0%,#f5f5f5 100%);border-radius:0 0 4px 4px}
+    .piano-key.white:hover{background:linear-gradient(to bottom,#f0f0f0 0%,#e8e8e8 100%)}
+    .piano-key.white.highlighted{background:linear-gradient(to bottom,#10b981 0%,#059669 100%);box-shadow:inset 0 0 10px rgba(16,185,129,0.6)}
+    .piano-key.black{width:26px;height:100px;background:linear-gradient(to bottom,#1a1a1a 0%,#0a0a0a 100%);border-radius:0 0 3px 3px;margin:0 -13px;z-index:10;border-color:rgba(0,0,0,0.8)}
+    .piano-key.black:hover{background:linear-gradient(to bottom,#2a2a2a 0%,#1a1a1a 100%)}
+    .piano-key.black.highlighted{background:linear-gradient(to bottom,#10b981 0%,#059669 100%);box-shadow:inset 0 0 8px rgba(16,185,129,0.7)}
+    .piano-key-label{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:10px;color:#333;font-weight:600;pointer-events:none}
+    .piano-key.black .piano-key-label{color:#ccc;bottom:6px}
+    .inversion-buttons{display:flex;gap:8px;flex-wrap:wrap}
+    .inversion-btn{padding:8px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);cursor:pointer;font-size:12px;color:inherit;transition:all 0.2s}
+    .inversion-btn:hover{background:rgba(255,255,255,0.06)}
+    .inversion-btn.active{background:linear-gradient(180deg,rgba(16,185,129,0.2),rgba(16,185,129,0.08));border-color:rgba(16,185,129,0.5);color:var(--accent);font-weight:600}
     @media(max-width:1024px){.main-content{flex-direction:column}.circle-section{flex:1;position:static;max-width:100%}}
     @media(max-width:520px){.flashcard{padding:30px 20px}.flashcard .question{font-size:24px}.flashcard .answer{font-size:18px}}
   </style>
@@ -124,6 +139,22 @@
           </div>
 
           <div class="status" id="statusText"></div>
+
+          <div class="piano-container hidden" id="pianoContainer">
+            <div style="margin-bottom:12px">
+              <div style="font-size:13px;margin-bottom:8px"><strong>Inversion:</strong></div>
+              <div class="inversion-buttons">
+                <button class="inversion-btn active" data-inversion="root">Root Position</button>
+                <button class="inversion-btn" data-inversion="first">1st Inversion</button>
+                <button class="inversion-btn" data-inversion="second">2nd Inversion</button>
+                <button class="inversion-btn" data-inversion="third">3rd Inversion</button>
+              </div>
+            </div>
+            <div style="margin-bottom:12px">
+              <button id="playChordBtn" style="padding:10px 16px;background:linear-gradient(180deg,rgba(16,185,129,0.2),rgba(16,185,129,0.08));border:1px solid rgba(16,185,129,0.4);border-radius:8px;color:var(--accent);cursor:pointer;font-weight:600">🔊 Play Chord</button>
+            </div>
+            <div class="piano" id="piano"></div>
+          </div>
         </div>
 
         <div class="panel" style="margin-top:12px">
@@ -233,6 +264,10 @@
   const resetProgressBtn = document.getElementById('resetProgress');
   const exportProgressBtn = document.getElementById('exportProgress');
   const circleOfFifthsGroup = document.getElementById('circleOfFifthsGroup');
+  const pianoContainer = document.getElementById('pianoContainer');
+  const pianoElement = document.getElementById('piano');
+  const inversionButtons = document.querySelectorAll('.inversion-btn');
+  const playChordBtn = document.getElementById('playChordBtn');
 
   // Circle of Fifths data (clockwise order starting from C at top)
   const circleOfFifthsKeys = [
@@ -256,6 +291,12 @@
   let isFlipped = false;
   let deck = [];
   let deckIndex = 0;
+  let currentInversion = 'root'; // 'root', 'first', 'second', 'third'
+  
+  // Audio context for playing notes
+  let audioContext = null;
+  let currentOscillators = [];
+  let currentGains = [];
   
   // competition mode state
   let competitionActive = false;
@@ -269,6 +310,105 @@
   function rootIndex(root){ 
     if(NAME_TO_INDEX[root] !== undefined) return NAME_TO_INDEX[root];
     return NAME_TO_INDEX[root];
+  }
+
+  // Initialize audio context
+  function initAudio(){
+    if(!audioContext){
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioContext;
+  }
+
+  async function ensureAudio(){
+    const ctx = initAudio();
+    if(ctx.state === 'suspended') {
+      try { await ctx.resume(); } catch(e) { console.warn('Audio resume failed', e); }
+    }
+    return ctx;
+  }
+
+  // Convert note name to pitch class (0-11) with enharmonic support
+  function noteToPitchClass(noteName){
+    if(NAME_TO_INDEX[noteName] !== undefined) return NAME_TO_INDEX[noteName];
+    if(noteName === 'Cb') return 11;
+    if(noteName === 'Fb') return 4;
+    if(noteName === 'B#') return 0;
+    if(noteName === 'E#') return 5;
+    if(noteName === 'Bbb') return 10;
+    if(noteName === 'Ebb') return 3;
+    return undefined;
+  }
+
+  // Convert pitch class + octave to frequency (Hz); octave 0 is around C4 block
+  function pitchToFrequency(pitchClass, octave){
+    if(pitchClass === undefined) return 440;
+    const C4_FREQ = 261.63;
+    const semitoneRatio = Math.pow(2, 1/12);
+    return C4_FREQ * Math.pow(2, octave) * Math.pow(semitoneRatio, pitchClass);
+  }
+
+  // Convert note name + octave to frequency (Hz)
+  function noteToFrequency(noteName, octave = 0){
+    const pc = noteToPitchClass(noteName);
+    return pitchToFrequency(pc, octave);
+  }
+
+  // Stop all currently playing notes
+  function stopAllNotes(){
+    currentOscillators.forEach(osc => osc.stop());
+    currentGains.forEach(gain => gain.gain.setValueAtTime(0, audioContext.currentTime));
+    currentOscillators = [];
+    currentGains = [];
+  }
+
+  // Play a single note by pitch class + octave
+  function playNoteByPitch(pitchClass, octave = 0, duration = 0.5){
+    if(pitchClass === undefined) return;
+    if(!audioContext) initAudio();
+    const frequency = pitchToFrequency(pitchClass, octave);
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.value = frequency;
+    
+    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+    
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    osc.start();
+    osc.stop(audioContext.currentTime + duration);
+  }
+
+  // Play chord (all notes at once) using pitch data
+  function playChordPitches(pitches, duration = 1){
+    if(!audioContext) initAudio();
+    stopAllNotes();
+    pitches.forEach(({pc, octave}) => {
+      if(pc === undefined) return;
+      const frequency = pitchToFrequency(pc, octave || 0);
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.start();
+      osc.stop(audioContext.currentTime + duration);
+      currentOscillators.push(osc);
+      currentGains.push(gain);
+    });
+  }
+
+  // Wrapper: play chord from note names (assumes octave 0)
+  function playChord(noteNames, duration = 1){
+    const pitches = (noteNames || []).map(n => ({pc: noteToPitchClass(n), octave: 0}));
+    playChordPitches(pitches, duration);
   }
 
   function computeChord(root, quality){
@@ -500,6 +640,12 @@
   }
 
   function renderCard(){
+    // Reset inversion when showing new card
+    if(!isFlipped) {
+      currentInversion = 'root';
+      inversionButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.inversion === 'root'));
+    }
+    
     // Question side (front of card)
     if(current.cardType === 'chord-to-notes'){
       cardQuestion.textContent = `${current.root} ${current.quality}`;
@@ -513,7 +659,8 @@
     feedbackActions.classList.toggle('hidden', !isFlipped);
     flashcard.classList.toggle('flipped', isFlipped);
 
-    // Answer side (back of card)
+    // Always show piano, but only highlight when flipped
+    pianoContainer.classList.remove('hidden');
     if(isFlipped){
       if(current.cardType === 'chord-to-notes'){
         cardAnswer.innerHTML = `<strong>Notes:</strong> ${current.noteNames.join(', ')}`;
@@ -523,9 +670,13 @@
       
       // Highlight the answer in the circle of fifths
       renderCircleOfFifths(current.noteNames, current.quality);
+      // Render piano with highlighted notes
+      renderPiano(current.noteNames);
     } else {
       // Reset highlighting when card is not flipped
       renderCircleOfFifths();
+      // Show piano in neutral state (no highlights)
+      renderPiano();
     }
 
     renderProgress();
@@ -545,6 +696,111 @@
     }
     const base = rootIndex(current.root);
     return needed.map(o => (base + o) % 12);
+  }
+
+  // Enharmonic preference for labeling keys based on chord spelling
+  const ENHARMONIC_LABELS = {
+    0:['C','B#'],
+    1:['C#','Db'],
+    2:['D'],
+    3:['D#','Eb'],
+    4:['E','Fb'],
+    5:['F','E#'],
+    6:['F#','Gb'],
+    7:['G'],
+    8:['G#','Ab'],
+    9:['A'],
+    10:['A#','Bb'],
+    11:['B','Cb']
+  };
+
+  function preferredLabelForPc(pc, chordNotes){
+    if(pc === undefined || !Array.isArray(chordNotes)) return null;
+    const opts = ENHARMONIC_LABELS[pc] || [];
+    for(const opt of opts){ if(chordNotes.includes(opt)) return opt; }
+    return null;
+  }
+
+  // Latest voiced notes with octave for playback
+  let lastVoicedNotes = [];
+
+  function renderPiano(chordNotes = []){
+    pianoElement.innerHTML = '';
+    lastVoicedNotes = [];
+    
+    // Two full octaves with one C in the middle
+    const pianoNotes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B','C','C#','D','D#','E','F','F#','G','G#','A','A#','B','C'];
+    const whiteNotes = ['C','D','E','F','G','A','B'];
+    
+    // Apply inversion to chord notes
+    let notesToDisplay = [...chordNotes];
+    if(notesToDisplay.length > 0 && currentInversion !== 'root') {
+      notesToDisplay = applyInversion(chordNotes, currentInversion);
+    }
+    
+    // Build voiced notes across octaves
+    const voiced = [];
+    if(notesToDisplay.length > 0) {
+      let currentOctave = 0;
+      let lastPc = noteToPitchClass(notesToDisplay[0]);
+      notesToDisplay.forEach((note, idx) => {
+        const pc = noteToPitchClass(note);
+        if(pc === undefined) return;
+        if(idx > 0 && pc < lastPc) currentOctave++;
+        voiced.push({pc, octave: currentOctave});
+        lastPc = pc;
+      });
+    }
+    lastVoicedNotes = voiced;
+    
+    // Render keys and highlight by pitch class + octave
+    pianoNotes.forEach((note, idx) => {
+      // Map keys to octaves: low octave (0-11)->0, middle C (12)->1, second octave (13-23)->1, top C (24)->2
+      let octave = 0;
+      if(idx === 12) octave = 1;
+      else if(idx > 12 && idx < 24) octave = 1;
+      else if(idx === 24) octave = 2; // top C one octave above middle C
+      const pc = noteToPitchClass(note);
+      const isWhite = whiteNotes.includes(note);
+      const isHighlighted = voiced.some(v => v.pc === pc && v.octave === octave);
+      
+      const key = document.createElement('div');
+      key.className = `piano-key ${isWhite ? 'white' : 'black'}`;
+      if(isHighlighted) key.classList.add('highlighted');
+      key.dataset.pitch = pc;
+      key.dataset.octave = octave;
+      
+      const label = document.createElement('div');
+      label.className = 'piano-key-label';
+      const preferred = preferredLabelForPc(pc, notesToDisplay);
+      label.textContent = preferred || note;
+      key.appendChild(label);
+      
+      pianoElement.appendChild(key);
+    });
+  }
+  
+  function applyInversion(chordNotes, inversion) {
+    if(chordNotes.length === 0) return chordNotes;
+    
+    let inversionIndex = 0;
+    if(inversion === 'first') inversionIndex = 1;
+    else if(inversion === 'second') inversionIndex = 2;
+    else if(inversion === 'third') inversionIndex = 3;
+    
+    // If chord doesn't have enough notes for this inversion, return original
+    if(inversionIndex >= chordNotes.length) return chordNotes;
+    
+    // Create inverted order: rotate the array so the inversion note is first
+    const inverted = [];
+    for(let i = inversionIndex; i < chordNotes.length; i++) {
+      inverted.push(chordNotes[i]);
+    }
+    for(let i = 0; i < inversionIndex; i++) {
+      inverted.push(chordNotes[i]);
+    }
+    
+    return inverted;
   }
 
   function flipCard(){
@@ -727,6 +983,8 @@
       majorSegment.setAttribute('fill', isMajorHighlight ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.04)');
       majorSegment.setAttribute('stroke', 'rgba(255,255,255,0.1)');
       majorSegment.setAttribute('stroke-width', '1');
+      majorSegment.classList.add('cof-segment');
+      majorSegment.dataset.note = key.major.split('/')[0];
       circleOfFifthsGroup.appendChild(majorSegment);
       
       // Major label
@@ -744,6 +1002,8 @@
       majorText.setAttribute('font-weight', isMajorHighlight ? '700' : '500');
       majorText.setAttribute('font-family', 'Arial, sans-serif');
       majorText.textContent = key.major;
+      majorText.classList.add('cof-key');
+      majorText.dataset.note = key.major.split('/')[0];
       circleOfFifthsGroup.appendChild(majorText);
       
       // Minor segment (inner ring)
@@ -753,6 +1013,8 @@
       minorSegment.setAttribute('fill', isMinorHighlight ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.02)');
       minorSegment.setAttribute('stroke', 'rgba(255,255,255,0.08)');
       minorSegment.setAttribute('stroke-width', '1');
+      minorSegment.classList.add('cof-segment');
+      minorSegment.dataset.note = key.minor.split('/')[0].replace('m','');
       circleOfFifthsGroup.appendChild(minorSegment);
       
       // Minor label
@@ -769,6 +1031,8 @@
       minorText.setAttribute('font-weight', isMinorHighlight ? '600' : '400');
       minorText.setAttribute('font-family', 'Arial, sans-serif');
       minorText.textContent = key.minor;
+      minorText.classList.add('cof-key');
+      minorText.dataset.note = key.minor.split('/')[0].replace('m','');
       circleOfFifthsGroup.appendChild(minorText);
     });
   }
@@ -900,6 +1164,19 @@
   modeButtons.forEach(btn=>{
     btn.addEventListener('click', ()=>setMode(btn.dataset.mode));
   });
+
+  // Inversion button event listeners
+  inversionButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      inversionButtons.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentInversion = btn.dataset.inversion;
+      // Re-render piano with new inversion if card is flipped
+      if(isFlipped) {
+        renderPiano(current.noteNames);
+      }
+    });
+  });
   
   // Select All checkbox event listener
   filterSelectAll.addEventListener('change', () => {
@@ -955,6 +1232,37 @@
   resetProgressBtn.addEventListener('click', resetProgress);
   exportProgressBtn.addEventListener('click', exportProgress);
 
+  // Play chord button (uses voiced notes with octaves for correct inversions)
+  playChordBtn.addEventListener('click', async ()=>{
+    await ensureAudio();
+    if(lastVoicedNotes.length > 0) {
+      playChordPitches(lastVoicedNotes, 1);
+    } else if(current.noteNames && current.noteNames.length > 0) {
+      playChord(current.noteNames, 1);
+    }
+  });
+
+  // Piano key click handlers
+  document.addEventListener('click', async (e)=>{
+    if(e.target.closest('.piano-key')) {
+      await ensureAudio();
+      const pianoKey = e.target.closest('.piano-key');
+      const pc = pianoKey.dataset.pitch ? parseInt(pianoKey.dataset.pitch,10) : undefined;
+      const octave = pianoKey.dataset.octave ? parseInt(pianoKey.dataset.octave,10) : 0;
+      if(pc !== undefined) {
+        playNoteByPitch(pc, octave, 0.6);
+      }
+    }
+    // Circle of Fifths click -> play lower-octave key note (text or segment)
+    const cofTarget = e.target.closest('.cof-key, .cof-segment');
+    if(cofTarget && cofTarget.dataset && cofTarget.dataset.note){
+      await ensureAudio();
+      const noteName = cofTarget.dataset.note;
+      const pc = noteToPitchClass(noteName);
+      if(pc !== undefined) playNoteByPitch(pc, 0, 0.8);
+    }
+  });
+
   // keyboard shortcuts
   document.addEventListener('keydown', (e)=>{
     if(e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
@@ -977,6 +1285,6 @@
     alert('Initialization failed: ' + e.message + '\n\nCheck console for details.');
   }
 })();
-</script>
-</body>
-</html>
+  </script>
+  </body>
+  </html>
