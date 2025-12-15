@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Chord Trainer</title>
+  <style>
+    :root{--bg:#0f1720;--card:#0b1220;--accent:#10b981;--muted:#9ca3af;--danger:#ef4444}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:linear-gradient(180deg,#071122 0%, #051224 100%);color:#e6eef6}
+    .app{max-width:1280px;margin:28px auto;padding:20px;border-radius:12px}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+    h1{font-size:20px;margin:0}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    select,button{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#07172a;color:inherit;cursor:pointer}
+    button:hover{background:#0a1f3a}
+    .mode-selector{display:flex;gap:8px;margin-bottom:12px}
+    .mode-btn{padding:10px 16px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);cursor:pointer}
+    .mode-btn.active{background:linear-gradient(180deg,rgba(16,185,129,0.2),rgba(16,185,129,0.08));border-color:rgba(16,185,129,0.5)}
+    .toggle-container{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+    .toggle-btn{padding:8px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);cursor:pointer;font-size:13px}
+    .toggle-btn.active{background:linear-gradient(180deg,rgba(16,185,129,0.2),rgba(16,185,129,0.08));border-color:rgba(16,185,129,0.5)}
+    .filter-container{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+    .filter-label{font-size:14px;font-weight:500;margin-right:4px}
+    .checkbox-group{display:flex;gap:10px;flex-wrap:wrap}
+    .checkbox-item{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);cursor:pointer;font-size:13px;transition:all 0.2s}
+    .checkbox-item:hover{background:rgba(255,255,255,0.06)}
+    .checkbox-item input[type="checkbox"]{cursor:pointer}
+    .checkbox-item input[type="checkbox"]:checked + label{color:var(--accent)}
+    .main-content{display:flex;gap:20px;align-items:stretch}
+    .card-section{flex:1;min-width:0;display:flex;flex-direction:column}
+    #flashcardContainer{flex:0 0 auto}
+    .circle-section{flex:0 0 420px;position:sticky;top:20px;align-self:flex-start}
+    .flashcard{background:rgba(255,255,255,0.04);border-radius:12px;padding:40px 30px;text-align:center;min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;cursor:pointer;border:2px solid rgba(255,255,255,0.08);transition:transform 0.2s}
+    .flashcard:hover{transform:scale(1.01)}
+    .flashcard .question{font-size:28px;font-weight:600;margin-bottom:12px}
+    .flashcard .hint{font-size:14px;color:var(--muted);margin-top:8px}
+    .flashcard .answer{font-size:20px;margin-top:16px;line-height:1.6}
+    .flashcard.flipped .question{font-size:18px;margin-bottom:16px}
+    .circle-container{display:flex;justify-content:center;margin-top:16px}
+    .circle-of-fifths{width:100%;max-width:400px;height:auto}
+    .actions{display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+    .actions button{padding:12px 24px;font-size:15px}
+    .btn-correct{background:linear-gradient(180deg,rgba(16,185,129,0.2),rgba(16,185,129,0.08));border-color:rgba(16,185,129,0.4)}
+    .btn-wrong{background:linear-gradient(180deg,rgba(239,68,68,0.2),rgba(239,68,68,0.08));border-color:rgba(239,68,68,0.4)}
+    .status{margin-top:10px;color:var(--muted);font-size:13px;text-align:center}
+    .panel{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;margin-top:12px}
+    .progress{display:flex;gap:10px;flex-wrap:wrap}
+    .small{font-size:13px;color:var(--muted)}
+    footer{margin-top:16px;color:var(--muted);font-size:13px;text-align:center}
+    .hidden{display:none}
+    .timer{font-size:28px;font-weight:600;color:var(--accent);text-align:center;margin:12px 0}
+    .competition-info{text-align:center;margin:8px 0;font-size:14px}
+    .highscore{background:rgba(16,185,129,0.1);padding:8px;border-radius:6px;margin-top:8px;font-size:13px}
+    #circleOfFifthsSvg{max-width:100%;height:auto}
+    @media(max-width:1024px){.main-content{flex-direction:column}.circle-section{flex:1;position:static;max-width:100%}}
+    @media(max-width:520px){.flashcard{padding:30px 20px}.flashcard .question{font-size:24px}.flashcard .answer{font-size:18px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Chord Trainer — Flashcard Mode</h1>
+    </header>
+
+    <div class="mode-selector">
+      <button class="mode-btn active" data-mode="chord-to-notes">Chord → Notes</button>
+      <button class="mode-btn" data-mode="notes-to-chord">Notes → Chord</button>
+      <button class="mode-btn" data-mode="mixed">Mixed</button>
+      <button class="mode-btn" data-mode="competition">⏱️ Competition</button>
+    </div>
+
+    <div class="filter-container">
+      <span class="filter-label">Include:</span>
+      <div class="checkbox-group">
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterSelectAll" checked>
+          <span><strong>Select All</strong></span>
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterTriads" checked>
+          <span>Triads</span>
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterMajor7" checked>
+          <span>Major 7th</span>
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterMinor7" checked>
+          <span>Minor 7th</span>
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterDominant7" checked>
+          <span>Dominant 7th</span>
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterDiminished" checked>
+          <span>Diminished 7th</span>
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" id="filterMinor7b5" checked>
+          <span>Minor 7th ♭5</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="card-section">
+        <div id="flashcardContainer">
+          <div class="timer hidden" id="timer">0:00</div>
+          <div class="competition-info hidden" id="competitionInfo">Correct: <strong id="correctCount">0</strong> / 20</div>
+          <div class="flashcard" id="flashcard" tabindex="0">
+            <div class="question" id="cardQuestion"></div>
+            <div class="hint" id="cardHint">Click to reveal answer</div>
+            <div class="answer hidden" id="cardAnswer"></div>
+          </div>
+
+          <div class="actions" id="cardActions">
+            <button id="flipBtn">Show Answer</button>
+          </div>
+
+          <div class="actions hidden" id="feedbackActions">
+            <button class="btn-wrong" id="wrongBtn">✗ Incorrect</button>
+            <button class="btn-correct" id="correctBtn">✓ Correct</button>
+          </div>
+
+          <div class="status" id="statusText"></div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><strong>Progress</strong></div>
+            <div class="small"><button id="resetProgress">Reset</button> <button id="exportProgress">Export</button></div>
+          </div>
+          <div id="progressArea" class="progress small" style="margin-top:8px"></div>
+          <div id="highscoreArea" class="highscore hidden"></div>
+        </div>
+      </div>
+
+      <div class="circle-section">
+        <div class="panel">
+          <div style="margin-bottom:8px"><strong>Circle of Fifths</strong></div>
+          <div style="display:flex;justify-content:center">
+            <svg id="circleOfFifthsSvg" width="400" height="400" viewBox="0 0 400 400">
+              <g id="circleOfFifthsGroup"></g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Click the card or "Show Answer" to flip. Mark yourself correct or incorrect after each card.</footer>
+  </div>
+
+<script>
+(() => {
+  const roots = ["C","G","D","A","E","B","F#","Gb","Db","Ab","Eb","Bb","F"];
+  const qualities = {
+    'Major': {intervals:[0,4,7], degrees:[0,2,4]},           // 1, 3, 5
+    'Minor': {intervals:[0,3,7], degrees:[0,2,4]},           // 1, b3, 5
+    'Dominant 7': {intervals:[0,4,7,10], degrees:[0,2,4,6], useMinorSeventh:true}, // 1, 3, 5, b7
+    'Major 7': {intervals:[0,4,7,11], degrees:[0,2,4,6]},    // 1, 3, 5, 7
+    'Minor 7': {intervals:[0,3,7,10], degrees:[0,2,4,6]},    // 1, b3, 5, b7
+    'Diminished 7': {intervals:[0,3,6,9], degrees:[0,2,4,6], hasDiminishedFifth:true, hasDiminishedSeventh:true},  // 1, b3, b5, bb7
+    'Minor 7b5': {intervals:[0,3,6,10], degrees:[0,2,4,6], hasDiminishedFifth:true, useMinorSeventh:true} // 1, b3, b5, b7
+  };
+
+  const SHARP_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const FLAT_NAMES  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+  const NAME_TO_INDEX = {
+    'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,'Fb':4,'E#':5,'F':5,'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11,'Cb':11,'B#':0
+  };
+
+  const flatKeys = new Set(['F','Bb','Eb','Ab','Db','Gb']);
+
+  // Proper enharmonic spelling for each root (major scales)
+  const MAJOR_SCALES = {
+    'C': ['C','D','E','F','G','A','B'],
+    'G': ['G','A','B','C','D','E','F#'],
+    'D': ['D','E','F#','G','A','B','C#'],
+    'A': ['A','B','C#','D','E','F#','G#'],
+    'E': ['E','F#','G#','A','B','C#','D#'],
+    'B': ['B','C#','D#','E','F#','G#','A#'],
+    'F#': ['F#','G#','A#','B','C#','D#','E#'],
+    'Gb': ['Gb','Ab','Bb','Cb','Db','Eb','F'],
+    'Db': ['Db','Eb','F','Gb','Ab','Bb','C'],
+    'Ab': ['Ab','Bb','C','Db','Eb','F','G'],
+    'Eb': ['Eb','F','G','Ab','Bb','C','D'],
+    'Bb': ['Bb','C','D','Eb','F','G','A'],
+    'F': ['F','G','A','Bb','C','D','E']
+  };
+
+  // Minor scales (natural minor) for each root
+  const MINOR_SCALES = {
+    'C': ['C','D','Eb','F','G','Ab','Bb'],
+    'G': ['G','A','Bb','C','D','Eb','F'],
+    'D': ['D','E','F','G','A','Bb','C'],
+    'A': ['A','B','C','D','E','F','G'],
+    'E': ['E','F#','G','A','B','C','D'],
+    'B': ['B','C#','D','E','F#','G','A'],
+    'F#': ['F#','G#','A','B','C#','D','E'],
+    'Gb': ['Gb','Ab','Bbb','Cb','Db','Ebb','Fb'],
+    'Db': ['Db','Eb','Fb','Gb','Ab','Bbb','Cb'],
+    'Ab': ['Ab','Bb','Cb','Db','Eb','Fb','Gb'],
+    'Eb': ['Eb','F','Gb','Ab','Bb','Cb','Db'],
+    'Bb': ['Bb','C','Db','Eb','F','Gb','Ab'],
+    'F': ['F','G','Ab','Bb','C','Db','Eb']
+  };
+
+  // DOM
+  const modeButtons = document.querySelectorAll('.mode-btn');
+  const filterSelectAll = document.getElementById('filterSelectAll');
+  const filterTriads = document.getElementById('filterTriads');
+  const filterMajor7 = document.getElementById('filterMajor7');
+  const filterMinor7 = document.getElementById('filterMinor7');
+  const filterDominant7 = document.getElementById('filterDominant7');
+  const filterDiminished = document.getElementById('filterDiminished');
+  const filterMinor7b5 = document.getElementById('filterMinor7b5');
+  const flashcard = document.getElementById('flashcard');
+  const timerDisplay = document.getElementById('timer');
+  const competitionInfo = document.getElementById('competitionInfo');
+  const correctCountDisplay = document.getElementById('correctCount');
+  const highscoreArea = document.getElementById('highscoreArea');
+  const cardQuestion = document.getElementById('cardQuestion');
+  const cardHint = document.getElementById('cardHint');
+  const cardAnswer = document.getElementById('cardAnswer');
+  const cardActions = document.getElementById('cardActions');
+  const feedbackActions = document.getElementById('feedbackActions');
+  const flipBtn = document.getElementById('flipBtn');
+  const correctBtn = document.getElementById('correctBtn');
+  const wrongBtn = document.getElementById('wrongBtn');
+  const statusText = document.getElementById('statusText');
+  const progressArea = document.getElementById('progressArea');
+  const resetProgressBtn = document.getElementById('resetProgress');
+  const exportProgressBtn = document.getElementById('exportProgress');
+  const circleOfFifthsGroup = document.getElementById('circleOfFifthsGroup');
+
+  // Circle of Fifths data (clockwise order starting from C at top)
+  const circleOfFifthsKeys = [
+    {major: 'C', minor: 'Am', angle: -105},
+    {major: 'G', minor: 'Em', angle: -75},
+    {major: 'D', minor: 'Bm', angle: -45},
+    {major: 'A', minor: 'F#m', angle: -15},
+    {major: 'E', minor: 'C#m', angle: 15},
+    {major: 'B', minor: 'G#m', angle: 45},
+    {major: 'F#/Gb', minor: 'D#m/Ebm', angle: 75},
+    {major: 'Db', minor: 'Bbm', angle: 105},
+    {major: 'Ab', minor: 'Fm', angle: 135},
+    {major: 'Eb', minor: 'Cm', angle: 165},
+    {major: 'Bb', minor: 'Gm', angle: -165},
+    {major: 'F', minor: 'Dm', angle: -135}
+  ];
+
+  // state
+  let currentMode = 'chord-to-notes'; // 'chord-to-notes', 'notes-to-chord', 'mixed', 'competition'
+  let current = {root:'C',quality:'Major',expected:[],expectedIntervals:[],noteNames:[],cardType:'chord-to-notes'};
+  let isFlipped = false;
+  let deck = [];
+  let deckIndex = 0;
+  
+  // competition mode state
+  let competitionActive = false;
+  let competitionStartTime = 0;
+  let competitionCorrectCount = 0;
+  let competitionTimer = null;
+
+  function prefersFlats(root){ return flatKeys.has(root); }
+  function noteName(index, preferFlats){ return (preferFlats?FLAT_NAMES:SHARP_NAMES)[((index%12)+12)%12]; }
+
+  function rootIndex(root){ 
+    if(NAME_TO_INDEX[root] !== undefined) return NAME_TO_INDEX[root];
+    return NAME_TO_INDEX[root];
+  }
+
+  function computeChord(root, quality){
+    const base = rootIndex(root);
+    const qualityData = qualities[quality];
+    
+    if(!qualityData){
+      console.error('Unknown chord quality:', quality, 'for root:', root);
+      throw new Error(`Unknown chord quality: ${quality}`);
+    }
+    
+    const offsets = qualityData.intervals;
+    const degrees = qualityData.degrees;
+    const tones = offsets.map(o => (base + o) % 12);
+    
+    // Choose correct scale based on chord quality
+    let scale;
+    if(quality.includes('Minor') || quality === 'Diminished 7'){
+      scale = MINOR_SCALES[root];
+    } else {
+      scale = MAJOR_SCALES[root];
+    }
+    
+    const noteNames = offsets.map((offset, idx) => {
+      const degree = degrees[idx];
+      const expectedIndex = (base + offset) % 12;
+      let noteName, actualIndex;
+      
+      // Special handling for dominant 7th chord - use the natural 7th from minor scale
+      if(quality === 'Dominant 7' && offset === 10 && qualityData.useMinorSeventh){
+        noteName = MINOR_SCALES[root][6]; // 7th degree from natural minor
+        actualIndex = rootIndex(noteName);
+      }
+      // Special handling for diminished 7th (bb7 = 9 semitones)
+      else if(quality === 'Diminished 7' && offset === 9 && idx === 3 && qualityData.hasDiminishedSeventh){
+        // For diminished 7th: the 7th note is 9 semitones (diminished 7th = double-flatted 7th)
+        // Take the minor 7th and flatten it by one more semitone
+        const minorSeventh = MINOR_SCALES[root][6];
+        
+        if(minorSeventh.includes('b')){
+          // If minor 7th already has a flat, add one more flat (e.g., Bb -> Bbb)
+          noteName = minorSeventh + 'b';
+        } else if(minorSeventh.includes('#')){
+          // If minor 7th has sharp, remove it and add flat (e.g., F# -> Fb)
+          const naturalNote = minorSeventh.replace('#', '');
+          noteName = naturalNote + 'b';
+        } else {
+          // Natural minor 7th, add single flat (e.g., C -> Cb, A -> Ab)
+          noteName = minorSeventh + 'b';
+        }
+        actualIndex = expectedIndex; // Already correct, don't adjust later
+      }
+      // Special handling for minor 7b5 dominant 7th - use the natural 7th from minor scale
+      else if(quality === 'Minor 7b5' && offset === 10 && qualityData.useMinorSeventh){
+        noteName = MINOR_SCALES[root][6]; // 7th degree from natural minor
+        actualIndex = rootIndex(noteName);
+      }
+      // Special handling for diminished 5th (b5 = 6 semitones)
+      else if((quality === 'Diminished 7' || quality === 'Minor 7b5') && offset === 6 && idx === 2 && qualityData.hasDiminishedFifth){
+        // For diminished 5th: take the 5th degree and flatten it
+        const perfectFifth = scale[4]; // 5th degree (index 4)
+        
+        // If the perfect 5th has a sharp, remove it to get natural, then add flat if needed
+        if(perfectFifth.includes('#')){
+          noteName = perfectFifth.replace('#', ''); // Remove sharp = flatten by semitone
+        } else {
+          noteName = perfectFifth + 'b'; // Add flat
+        }
+        actualIndex = rootIndex(noteName);
+      }
+      else {
+        noteName = scale[degree];
+        actualIndex = rootIndex(noteName);
+      }
+      
+      // Add accidental if needed (for non-special cases)
+      if(actualIndex !== expectedIndex){
+        const diff = (expectedIndex - actualIndex + 12) % 12;
+        if(diff === 1) noteName += '#';
+        else if(diff === 11) noteName += 'b';
+        else if(diff === 2) noteName += '##';
+        else if(diff === 10) noteName += 'bb';
+      }
+      
+      return noteName;
+    });
+    
+    return {tones, offsets, noteNames};
+  }
+
+  function buildDeck(){
+    // Only use diatonic chords from the 13 standard keys (0-7 sharps/flats)
+    // Major keys: C, G, D, A, E, B, F#, Gb, Db, Ab, Eb, Bb, F
+    // Their relative minors and diatonic chords
+    
+    const validChords = [
+      // C major family (0 accidentals): C, Dm, Em, F, G, Am, Bdim
+      {root:'C', quality:'Major'}, {root:'C', quality:'Major 7'}, {root:'C', quality:'Dominant 7'},
+      {root:'D', quality:'Minor'}, {root:'D', quality:'Minor 7'},
+      {root:'E', quality:'Minor'}, {root:'E', quality:'Minor 7'},
+      {root:'F', quality:'Major'}, {root:'F', quality:'Major 7'}, {root:'F', quality:'Dominant 7'},
+      {root:'G', quality:'Major'}, {root:'G', quality:'Major 7'}, {root:'G', quality:'Dominant 7'},
+      {root:'A', quality:'Minor'}, {root:'A', quality:'Minor 7'},
+      {root:'B', quality:'Diminished 7'},
+      
+      // G major family (1#): G, Am, Bm, C, D, Em, F#dim7
+      {root:'B', quality:'Minor'}, {root:'B', quality:'Minor 7'},
+      {root:'F#', quality:'Diminished 7'},
+      
+      // D major family (2#): D, Em, F#m, G, A, Bm, C#dim7
+      {root:'D', quality:'Major'}, {root:'D', quality:'Major 7'}, {root:'D', quality:'Dominant 7'},
+      {root:'F#', quality:'Minor'}, {root:'F#', quality:'Minor 7'},
+      {root:'C#', quality:'Diminished 7'},
+      
+      // A major family (3#): A, Bm, C#m, D, E, F#m, G#dim7
+      {root:'A', quality:'Major'}, {root:'A', quality:'Major 7'}, {root:'A', quality:'Dominant 7'},
+      {root:'G#', quality:'Diminished 7'},
+      
+      // E major family (4#): E, F#m, G#m, A, B, C#m, D#dim7
+      {root:'E', quality:'Major'}, {root:'E', quality:'Major 7'}, {root:'E', quality:'Dominant 7'},
+      {root:'D#', quality:'Diminished 7'},
+      
+      // B major family (5#): B, C#m, D#m, E, F#, G#m, A#dim7
+      {root:'B', quality:'Major'}, {root:'B', quality:'Major 7'}, {root:'B', quality:'Dominant 7'},
+      {root:'A#', quality:'Diminished 7'},
+      
+      // F# major family (6#): F#, G#m, A#m, B, C#, D#m, E#dim7
+      {root:'F#', quality:'Major'}, {root:'F#', quality:'Major 7'}, {root:'F#', quality:'Dominant 7'},
+      {root:'E#', quality:'Diminished 7'},
+      
+      // F major family (1b): F, Gm, Am, Bb, C, Dm, Edim7
+      {root:'Bb', quality:'Major'}, {root:'Bb', quality:'Major 7'}, {root:'Bb', quality:'Dominant 7'},
+      {root:'E', quality:'Diminished 7'},
+      
+      // Bb major family (2b): Bb, Cm, Dm, Eb, F, Gm, Adim7
+      {root:'Eb', quality:'Major'}, {root:'Eb', quality:'Major 7'}, {root:'Eb', quality:'Dominant 7'},
+      {root:'A', quality:'Diminished 7'},
+      
+      // Eb major family (3b): Eb, Fm, Gm, Ab, Bb, Cm, Ddim7
+      {root:'Ab', quality:'Major'}, {root:'Ab', quality:'Major 7'}, {root:'Ab', quality:'Dominant 7'},
+      {root:'D', quality:'Diminished 7'},
+      
+      // Ab major family (4b): Ab, Bbm, Cm, Db, Eb, Fm, Gdim7
+      {root:'Db', quality:'Major'}, {root:'Db', quality:'Major 7'}, {root:'Db', quality:'Dominant 7'},
+      {root:'G', quality:'Diminished 7'},
+      
+      // Db major family (5b): Db, Ebm, Fm, Gb, Ab, Bbm, Cdim7
+      {root:'Gb', quality:'Major'}, {root:'Gb', quality:'Major 7'}, {root:'Gb', quality:'Dominant 7'},
+      {root:'Eb', quality:'Minor'}, {root:'Eb', quality:'Minor 7'},
+      {root:'Bb', quality:'Minor'}, {root:'Bb', quality:'Minor 7'},
+      {root:'C', quality:'Diminished 7'}
+    ];
+    
+    // Get enabled chord types based on checkboxes
+    const enabledQualities = [];
+    if(filterTriads.checked) {
+      enabledQualities.push('Major', 'Minor');
+    }
+    if(filterMajor7.checked) enabledQualities.push('Major 7');
+    if(filterMinor7.checked) enabledQualities.push('Minor 7');
+    if(filterDominant7.checked) enabledQualities.push('Dominant 7');
+    if(filterDiminished.checked) enabledQualities.push('Diminished 7');
+    if(filterMinor7b5.checked) enabledQualities.push('Minor 7b5');
+    
+    // Filter chords based on enabled qualities
+    const filteredChords = validChords.filter(c => enabledQualities.includes(c.quality));
+    
+    // Add Minor 7b5 chords for appropriate roots
+    if(filterMinor7b5.checked) {
+      // Add half-diminished 7th chords (minor 7b5) for diatonic contexts
+      const minor7b5Chords = [
+        {root:'B', quality:'Minor 7b5'},  // in C major
+        {root:'F#', quality:'Minor 7b5'}, // in G major
+        {root:'C#', quality:'Minor 7b5'}, // in D major
+        {root:'D', quality:'Minor 7b5'},  // in Eb major
+        {root:'A', quality:'Minor 7b5'},  // in Bb major
+        {root:'E', quality:'Minor 7b5'},  // in F major
+        {root:'G', quality:'Minor 7b5'}   // in Ab major
+      ];
+      filteredChords.push(...minor7b5Chords);
+    }
+    
+    deck = [];
+    filteredChords.forEach(chord=>{
+      let cardType;
+      if(currentMode === 'mixed' || currentMode === 'competition'){
+        cardType = Math.random() > 0.5 ? 'chord-to-notes' : 'notes-to-chord';
+      } else {
+        cardType = currentMode;
+      }
+      deck.push({root:chord.root, quality:chord.quality, cardType});
+    });
+    
+    // shuffle
+    for(let i=deck.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [deck[i],deck[j]]=[deck[j],deck[i]];
+    }
+    deckIndex = 0;
+  }
+
+  function nextCard(){
+    if(deck.length === 0) buildDeck();
+    if(deckIndex >= deck.length){
+      buildDeck(); // reshuffle when done
+    }
+    if(deck.length === 0){
+      alert('Please select at least one chord type to practice.');
+      return;
+    }
+    const card = deck[deckIndex++];
+    current.root = card.root;
+    current.quality = card.quality;
+    current.cardType = card.cardType;
+
+    try {
+      const chord = computeChord(current.root,current.quality);
+      current.expected = chord.tones;
+      current.expectedIntervals = chord.offsets;
+      current.noteNames = chord.noteNames;
+    } catch(e) {
+      console.error('Error in computeChord:', e, 'root:', current.root, 'quality:', current.quality);
+      alert('Error: ' + e.message);
+      return;
+    }
+
+    isFlipped = false;
+    renderCard();
+  }
+
+  function renderCard(){
+    // Question side (front of card)
+    if(current.cardType === 'chord-to-notes'){
+      cardQuestion.textContent = `${current.root} ${current.quality}`;
+    } else {
+      cardQuestion.textContent = current.noteNames.join(', ');
+    }
+    
+    cardHint.classList.toggle('hidden', isFlipped);
+    cardAnswer.classList.toggle('hidden', !isFlipped);
+    cardActions.classList.toggle('hidden', isFlipped);
+    feedbackActions.classList.toggle('hidden', !isFlipped);
+    flashcard.classList.toggle('flipped', isFlipped);
+
+    // Answer side (back of card)
+    if(isFlipped){
+      if(current.cardType === 'chord-to-notes'){
+        cardAnswer.innerHTML = `<strong>Notes:</strong> ${current.noteNames.join(', ')}`;
+      } else {
+        cardAnswer.innerHTML = `<strong>Chord:</strong> ${current.root} ${current.quality}`;
+      }
+      
+      // Highlight the answer in the circle of fifths
+      renderCircleOfFifths(current.noteNames, current.quality);
+    } else {
+      // Reset highlighting when card is not flipped
+      renderCircleOfFifths();
+    }
+
+    renderProgress();
+  }
+
+  function determineExpectedForMode(){
+    const offsets = current.expectedIntervals;
+    const needed = [];
+    if(current.mode === 'all'){
+      for(let i=0;i<offsets.length;i++){ needed.push(offsets[i]); }
+    } else if(current.mode === '3rd'){
+      if(offsets.length>=2) needed.push(offsets[1]);
+    } else if(current.mode === '5th'){
+      if(offsets.length>=3) needed.push(offsets[2]);
+    } else if(current.mode === '7th'){
+      if(offsets.length>=4) needed.push(offsets[3]);
+    }
+    const base = rootIndex(current.root);
+    return needed.map(o => (base + o) % 12);
+  }
+
+  function flipCard(){
+    if(!isFlipped){
+      isFlipped = true;
+      renderCard();
+    }
+  }
+
+  function markCorrect(){
+    updateStats(current.root, current.quality, current.cardType, true);
+    
+    if(competitionActive){
+      competitionCorrectCount++;
+      correctCountDisplay.textContent = competitionCorrectCount;
+      
+      if(competitionCorrectCount >= 20){
+        endCompetition();
+        return;
+      }
+      
+      statusText.textContent = '✓ Correct!';
+      setTimeout(()=>{ statusText.textContent=''; nextCard(); }, 400);
+    } else {
+      statusText.textContent = '✓ Marked correct';
+      setTimeout(()=>{ statusText.textContent=''; nextCard(); }, 600);
+    }
+  }
+
+  function markWrong(){
+    updateStats(current.root, current.quality, current.cardType, false);
+    
+    if(competitionActive){
+      statusText.textContent = '✗ Try again';
+      setTimeout(()=>{ statusText.textContent=''; nextCard(); }, 400);
+    } else {
+      statusText.textContent = '✗ Marked incorrect';
+      setTimeout(()=>{ statusText.textContent=''; nextCard(); }, 600);
+    }
+  }
+
+  function storageKey(){ return 'chordTrainerProgress_v1'; }
+
+  function loadProgress(){
+    try{ const raw = localStorage.getItem(storageKey()); return raw?JSON.parse(raw):{} }catch(e){return{}};
+  }
+  function saveProgress(data){ localStorage.setItem(storageKey(), JSON.stringify(data)); }
+
+  function updateStats(root, quality, mode, correct){
+    const data = loadProgress();
+    const key = `${root}|${quality}|${mode}`;
+    if(!data[key]) data[key] = {attempts:0,correct:0,streak:0};
+    data[key].attempts++;
+    if(correct){ data[key].correct++; data[key].streak = (data[key].streak||0)+1; } else { data[key].streak = 0; }
+    saveProgress(data);
+  }
+
+  function renderProgress(){
+    const data = loadProgress();
+    // aggregate stats across all cards
+    let totalAttempts = 0, totalCorrect = 0;
+    Object.values(data).forEach(s=>{ totalAttempts+=s.attempts; totalCorrect+=s.correct; });
+    const pct = totalAttempts>0 ? Math.round(100*totalCorrect/totalAttempts) : 0;
+    const modeLabel = currentMode === 'chord-to-notes' ? 'Chord → Notes' : currentMode === 'notes-to-chord' ? 'Notes → Chord' : currentMode === 'mixed' ? 'Mixed' : 'Competition';
+    progressArea.innerHTML = `Total: ${totalAttempts} attempts, ${totalCorrect} correct (${pct}%) — Mode: <strong>${modeLabel}</strong>`;
+    
+    renderHighscore();
+  }
+
+  function resetProgress(){ if(confirm('Reset all saved progress?')){ localStorage.removeItem(storageKey()); renderProgress(); }}
+  function exportProgress(){ const d = loadProgress(); const txt = JSON.stringify(d,null,2); const win = window.open('','_blank'); win.document.body.prepend(document.createElement('pre')).textContent = txt; }
+
+  function renderCircleOfFifths(chordNotes, highlightQuality){
+    circleOfFifthsGroup.innerHTML = '';
+    
+    const centerX = 200;
+    const centerY = 200;
+    const outerRadius = 170;
+    const innerRadius = 120;
+    const minorOuterRadius = 110;
+    const minorInnerRadius = 70;
+    
+    // Helper function to check if a note matches a key position (handling enharmonics)
+    function noteMatchesKey(note, keyString) {
+      if(!note || !keyString) return false;
+      
+      // Direct match
+      if(keyString === note) return true;
+      
+      // Split by / for enharmonic keys
+      const keys = keyString.split('/');
+      if(keys.includes(note)) return true;
+      
+      // Check enharmonic equivalents - handle double flats/sharps
+      let noteIndex = NAME_TO_INDEX[note];
+      
+      // If not found, try to compute for double accidentals
+      if(noteIndex === undefined && note.includes('bb')) {
+        const baseNote = note.replace('bb', '');
+        const baseIndex = NAME_TO_INDEX[baseNote];
+        if(baseIndex !== undefined) {
+          noteIndex = (baseIndex - 2 + 12) % 12; // Double flat = -2 semitones
+        }
+      } else if(noteIndex === undefined && note.includes('##')) {
+        const baseNote = note.replace('##', '');
+        const baseIndex = NAME_TO_INDEX[baseNote];
+        if(baseIndex !== undefined) {
+          noteIndex = (baseIndex + 2) % 12; // Double sharp = +2 semitones
+        }
+      }
+      
+      if(noteIndex === undefined) return false;
+      
+      return keys.some(k => {
+        const cleanKey = k.replace('m', '');
+        const keyIndex = NAME_TO_INDEX[cleanKey];
+        return keyIndex !== undefined && keyIndex === noteIndex;
+      });
+    }
+    
+    // Determine which notes to highlight and on which ring
+    let notesToHighlight = { major: [], minor: [] };
+    
+    if(chordNotes && highlightQuality) {
+      const isDominant = highlightQuality === 'Dominant 7';
+      const isMajorChord = highlightQuality === 'Major' || highlightQuality === 'Major 7';
+      const isMinorChord = highlightQuality === 'Minor' || highlightQuality === 'Minor 7';
+      const isMinor7b5 = highlightQuality === 'Minor 7b5';
+      const isDiminished7 = highlightQuality === 'Diminished 7';
+      
+      if(isDominant && chordNotes.length >= 4) {
+        // Dominant 7: root on outer, 3rd on inner, 5th on outer, 7th on outer
+        notesToHighlight.major.push(chordNotes[0]); // root
+        notesToHighlight.minor.push(chordNotes[1]); // 3rd
+        notesToHighlight.major.push(chordNotes[2]); // 5th
+        notesToHighlight.major.push(chordNotes[3]); // 7th
+      } else if(isMinor7b5 && chordNotes.length >= 4) {
+        // Minor 7b5 (half-diminished): root on inner, 3rd on outer, 5th on inner, 7th on outer
+        notesToHighlight.minor.push(chordNotes[0]); // root
+        notesToHighlight.major.push(chordNotes[1]); // b3rd
+        notesToHighlight.minor.push(chordNotes[2]); // b5th
+        notesToHighlight.major.push(chordNotes[3]); // b7th
+      } else if(isDiminished7 && chordNotes.length >= 4) {
+        // Diminished 7: root on inner, 3rd on outer, 5th on inner, 7th on outer
+        notesToHighlight.minor.push(chordNotes[0]); // root
+        notesToHighlight.major.push(chordNotes[1]); // b3rd
+        notesToHighlight.minor.push(chordNotes[2]); // b5th
+        notesToHighlight.major.push(chordNotes[3]); // bb7th
+      } else if(isMajorChord && chordNotes.length >= 3) {
+        // Major chord: root on outer, 3rd on inner, 5th on outer, (7th on inner if exists)
+        notesToHighlight.major.push(chordNotes[0]); // root
+        notesToHighlight.minor.push(chordNotes[1]); // 3rd
+        notesToHighlight.major.push(chordNotes[2]); // 5th
+        if(chordNotes.length >= 4) {
+          notesToHighlight.minor.push(chordNotes[3]); // 7th
+        }
+      } else if(isMinorChord && chordNotes.length >= 3) {
+        // Minor chord: root on inner, 3rd on outer, 5th on inner, (7th on outer if exists)
+        notesToHighlight.minor.push(chordNotes[0]); // root
+        notesToHighlight.major.push(chordNotes[1]); // 3rd
+        notesToHighlight.minor.push(chordNotes[2]); // 5th
+        if(chordNotes.length >= 4) {
+          notesToHighlight.major.push(chordNotes[3]); // 7th
+        }
+      }
+    }
+    
+    circleOfFifthsKeys.forEach((key, idx) => {
+      const angle = key.angle;
+      const nextAngle = circleOfFifthsKeys[(idx + 1) % 12].angle;
+      
+      // Check if this position matches any highlighted notes
+      const isMajorHighlight = notesToHighlight.major.some(note => noteMatchesKey(note, key.major));
+      const isMinorHighlight = notesToHighlight.minor.some(note => noteMatchesKey(note, key.minor));
+      
+      // Major segment (outer ring)
+      const majorPath = createSegmentPath(centerX, centerY, innerRadius, outerRadius, angle, nextAngle);
+      const majorSegment = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      majorSegment.setAttribute('d', majorPath);
+      majorSegment.setAttribute('fill', isMajorHighlight ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.04)');
+      majorSegment.setAttribute('stroke', 'rgba(255,255,255,0.1)');
+      majorSegment.setAttribute('stroke-width', '1');
+      circleOfFifthsGroup.appendChild(majorSegment);
+      
+      // Major label
+      const majorLabelAngle = angle + 15;
+      const majorLabelRadius = (innerRadius + outerRadius) / 2;
+      const majorLabelX = centerX + majorLabelRadius * Math.cos(majorLabelAngle * Math.PI / 180);
+      const majorLabelY = centerY + majorLabelRadius * Math.sin(majorLabelAngle * Math.PI / 180);
+      const majorText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      majorText.setAttribute('x', majorLabelX);
+      majorText.setAttribute('y', majorLabelY);
+      majorText.setAttribute('text-anchor', 'middle');
+      majorText.setAttribute('dominant-baseline', 'middle');
+      majorText.setAttribute('fill', isMajorHighlight ? '#10b981' : '#e6eef6');
+      majorText.setAttribute('font-size', '14');
+      majorText.setAttribute('font-weight', isMajorHighlight ? '700' : '500');
+      majorText.setAttribute('font-family', 'Arial, sans-serif');
+      majorText.textContent = key.major;
+      circleOfFifthsGroup.appendChild(majorText);
+      
+      // Minor segment (inner ring)
+      const minorPath = createSegmentPath(centerX, centerY, minorInnerRadius, minorOuterRadius, angle, nextAngle);
+      const minorSegment = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      minorSegment.setAttribute('d', minorPath);
+      minorSegment.setAttribute('fill', isMinorHighlight ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.02)');
+      minorSegment.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+      minorSegment.setAttribute('stroke-width', '1');
+      circleOfFifthsGroup.appendChild(minorSegment);
+      
+      // Minor label
+      const minorLabelRadius = (minorInnerRadius + minorOuterRadius) / 2;
+      const minorLabelX = centerX + minorLabelRadius * Math.cos(majorLabelAngle * Math.PI / 180);
+      const minorLabelY = centerY + minorLabelRadius * Math.sin(majorLabelAngle * Math.PI / 180);
+      const minorText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      minorText.setAttribute('x', minorLabelX);
+      minorText.setAttribute('y', minorLabelY);
+      minorText.setAttribute('text-anchor', 'middle');
+      minorText.setAttribute('dominant-baseline', 'middle');
+      minorText.setAttribute('fill', isMinorHighlight ? '#10b981' : '#9ca3af');
+      minorText.setAttribute('font-size', '12');
+      minorText.setAttribute('font-weight', isMinorHighlight ? '600' : '400');
+      minorText.setAttribute('font-family', 'Arial, sans-serif');
+      minorText.textContent = key.minor;
+      circleOfFifthsGroup.appendChild(minorText);
+    });
+  }
+  
+  function createSegmentPath(cx, cy, innerR, outerR, startAngle, endAngle){
+    const startOuter = polarToCartesian(cx, cy, outerR, startAngle);
+    const endOuter = polarToCartesian(cx, cy, outerR, endAngle);
+    const startInner = polarToCartesian(cx, cy, innerR, startAngle);
+    const endInner = polarToCartesian(cx, cy, innerR, endAngle);
+    
+    const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+    
+    return [
+      'M', startOuter.x, startOuter.y,
+      'A', outerR, outerR, 0, largeArc, 1, endOuter.x, endOuter.y,
+      'L', endInner.x, endInner.y,
+      'A', innerR, innerR, 0, largeArc, 0, startInner.x, startInner.y,
+      'Z'
+    ].join(' ');
+  }
+  
+  function polarToCartesian(cx, cy, radius, angleDeg){
+    const angleRad = angleDeg * Math.PI / 180;
+    return {
+      x: cx + radius * Math.cos(angleRad),
+      y: cy + radius * Math.sin(angleRad)
+    };
+  }
+
+  function setMode(mode){
+    currentMode = mode;
+    modeButtons.forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    
+    if(mode === 'competition'){
+      startCompetition();
+    } else {
+      stopCompetition();
+      buildDeck();
+      nextCard();
+    }
+  }
+
+  function startCompetition(){
+    competitionActive = true;
+    competitionCorrectCount = 0;
+    competitionStartTime = Date.now();
+    
+    timerDisplay.classList.remove('hidden');
+    competitionInfo.classList.remove('hidden');
+    correctCountDisplay.textContent = '0';
+    
+    // Start timer
+    competitionTimer = setInterval(updateTimer, 100);
+    
+    // Build mixed deck for competition
+    currentMode = 'competition';
+    buildDeck();
+    nextCard();
+    renderHighscore();
+  }
+
+  function stopCompetition(){
+    competitionActive = false;
+    if(competitionTimer){
+      clearInterval(competitionTimer);
+      competitionTimer = null;
+    }
+    timerDisplay.classList.add('hidden');
+    competitionInfo.classList.add('hidden');
+  }
+
+  function updateTimer(){
+    if(!competitionActive) return;
+    const elapsed = Date.now() - competitionStartTime;
+    const seconds = Math.floor(elapsed / 1000);
+    const deciseconds = Math.floor((elapsed % 1000) / 100);
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    timerDisplay.textContent = `${minutes}:${secs.toString().padStart(2,'0')}.${deciseconds}`;
+  }
+
+  function endCompetition(){
+    const finalTime = Date.now() - competitionStartTime;
+    stopCompetition();
+    
+    // Check and save highscore
+    const highscore = loadHighscore();
+    const isNewRecord = !highscore || finalTime < highscore;
+    
+    if(isNewRecord){
+      saveHighscore(finalTime);
+      statusText.textContent = `🏆 NEW RECORD! Time: ${formatTime(finalTime)}`;
+    } else {
+      statusText.textContent = `✓ Finished! Time: ${formatTime(finalTime)} (Best: ${formatTime(highscore)})`;
+    }
+    
+    renderHighscore();
+  }
+
+  function formatTime(ms){
+    const seconds = Math.floor(ms / 1000);
+    const deciseconds = Math.floor((ms % 1000) / 100);
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2,'0')}.${deciseconds}`;
+  }
+
+  function loadHighscore(){
+    try{ const raw = localStorage.getItem('chordTrainerHighscore'); return raw ? parseInt(raw) : null; }catch(e){return null}
+  }
+
+  function saveHighscore(time){
+    localStorage.setItem('chordTrainerHighscore', time.toString());
+  }
+
+  function renderHighscore(){
+    const highscore = loadHighscore();
+    if(highscore && currentMode === 'competition'){
+      highscoreArea.classList.remove('hidden');
+      highscoreArea.innerHTML = `🏆 Best Time (20 correct): <strong>${formatTime(highscore)}</strong>`;
+    } else {
+      highscoreArea.classList.add('hidden');
+    }
+  }
+
+  // events
+  modeButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>setMode(btn.dataset.mode));
+  });
+  
+  // Select All checkbox event listener
+  filterSelectAll.addEventListener('change', () => {
+    const isChecked = filterSelectAll.checked;
+    if(!isChecked){
+      // Default to Triads only when unchecking Select All
+      filterTriads.checked = true;
+      filterMajor7.checked = false;
+      filterMinor7.checked = false;
+      filterDominant7.checked = false;
+      filterDiminished.checked = false;
+      filterMinor7b5.checked = false;
+    } else {
+      // Check all when selecting
+      filterTriads.checked = true;
+      filterMajor7.checked = true;
+      filterMinor7.checked = true;
+      filterDominant7.checked = true;
+      filterDiminished.checked = true;
+      filterMinor7b5.checked = true;
+    }
+    if(competitionActive){
+      stopCompetition();
+      alert('Competition stopped - deck rebuilt with new filter.');
+    }
+    buildDeck();
+    nextCard();
+  });
+
+  // Filter checkbox event listeners
+  [filterTriads, filterMajor7, filterMinor7, filterDominant7, filterDiminished, filterMinor7b5].forEach(checkbox => {
+    checkbox.addEventListener('change', ()=>{
+      // Update Select All checkbox state
+      const allChecked = filterTriads.checked && filterMajor7.checked && filterMinor7.checked && 
+                         filterDominant7.checked && filterDiminished.checked && filterMinor7b5.checked;
+      filterSelectAll.checked = allChecked;
+      
+      // Rebuild deck with new filter
+      if(competitionActive){
+        stopCompetition();
+        alert('Competition stopped - deck rebuilt with new filter.');
+      }
+      buildDeck();
+      nextCard();
+    });
+  });
+  
+  flipBtn.addEventListener('click', flipCard);
+  flashcard.addEventListener('click', flipCard);
+  flashcard.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); flipCard(); }});
+  correctBtn.addEventListener('click', markCorrect);
+  wrongBtn.addEventListener('click', markWrong);
+  resetProgressBtn.addEventListener('click', resetProgress);
+  exportProgressBtn.addEventListener('click', exportProgress);
+
+  // keyboard shortcuts
+  document.addEventListener('keydown', (e)=>{
+    if(e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+    if(e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); if(!isFlipped) flipCard(); }
+    if(e.key === 'y' || e.key === 'j'){ if(isFlipped) markCorrect(); }
+    if(e.key === 'n' || e.key === 'k'){ if(isFlipped) markWrong(); }
+  });
+
+  // init
+  try {
+    console.log('Starting initialization...');
+    buildDeck();
+    console.log('Deck built, length:', deck.length);
+    renderCircleOfFifths();
+    console.log('Circle of Fifths rendered');
+    nextCard();
+    console.log('First card loaded');
+  } catch(e) {
+    console.error('Initialization error:', e);
+    alert('Initialization failed: ' + e.message + '\n\nCheck console for details.');
+  }
+})();
+</script>
+</body>
+</html>
