@@ -631,7 +631,7 @@
       current.noteNames = chord.noteNames;
     } catch(e) {
       console.error('Error in computeChord:', e, 'root:', current.root, 'quality:', current.quality);
-      alert('Error: ' + e.message);
+      // Silently continue - error logged to console
       return;
     }
 
@@ -645,6 +645,15 @@
       currentInversion = 'root';
       inversionButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.inversion === 'root'));
     }
+    
+    // Show/hide 3rd inversion button based on chord type
+    // Triads have 3 notes, seventh chords have 4 notes
+    const isTriad = qualities[current.quality]?.intervals.length === 3;
+    inversionButtons.forEach(btn => {
+      if(btn.dataset.inversion === 'third') {
+        btn.style.display = isTriad ? 'none' : '';
+      }
+    });
     
     // Question side (front of card)
     if(current.cardType === 'chord-to-notes'){
